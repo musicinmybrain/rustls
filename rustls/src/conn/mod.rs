@@ -66,7 +66,7 @@ mod connection {
         ///
         /// See [`ConnectionCommon::write_tls()`] for more information.
         pub fn write_tls(&mut self, wr: &mut dyn io::Write) -> Result<usize, io::Error> {
-            self.sendable_tls.write_to(wr)
+            self.send.sendable_tls.write_to(wr)
         }
 
         /// Returns an object that allows reading plaintext.
@@ -330,6 +330,7 @@ https://docs.rs/rustls/latest/rustls/manual/_03_howto/index.html#unexpected-eof"
             let len = self
                 .core
                 .side
+                .send
                 .buffer_plaintext(buf.into(), &mut self.sendable_plaintext);
             self.core.maybe_refresh_traffic_keys();
             Ok(len)
@@ -352,6 +353,7 @@ https://docs.rs/rustls/latest/rustls/manual/_03_howto/index.html#unexpected-eof"
             let len = self
                 .core
                 .side
+                .send
                 .buffer_plaintext(payload, &mut self.sendable_plaintext);
             self.core.maybe_refresh_traffic_keys();
             Ok(len)
@@ -557,7 +559,11 @@ impl<Side: SideData> ConnectionCommon<Side> {
     /// [`Connection::process_new_packets`]: crate::Connection::process_new_packets
     pub fn set_buffer_limit(&mut self, limit: Option<usize>) {
         self.sendable_plaintext.set_limit(limit);
-        self.sendable_tls.set_limit(limit);
+        self.core
+            .side
+            .send
+            .sendable_tls
+            .set_limit(limit);
     }
 
     /// Sets a limit on the internal buffers used to buffer decoded plaintext.
@@ -566,6 +572,7 @@ impl<Side: SideData> ConnectionCommon<Side> {
     pub fn set_plaintext_buffer_limit(&mut self, limit: Option<usize>) {
         self.core
             .side
+            .recv
             .received_plaintext
             .set_limit(limit);
     }
@@ -606,10 +613,10 @@ impl<Side: SideData> ConnectionCommon<Side> {
     /// Returns an object that allows reading plaintext.
     pub fn reader(&mut self) -> Reader<'_> {
         let common = &mut self.core.side;
-        let has_seen_eof = common.has_seen_eof;
-        let has_received_close_notify = common.has_received_close_notify;
+        let has_seen_eof = common.recv.has_seen_eof;
+        let has_received_close_notify = common.recv.has_received_close_notify;
         Reader {
-            received_plaintext: &mut common.received_plaintext,
+            received_plaintext: &mut common.recv.received_plaintext,
             // Are we done? i.e., have we processed all received messages, and received a
             // close_notify to indicate that no new messages will arrive?
             has_received_close_notify,
@@ -807,11 +814,11 @@ impl<Side: SideData> ConnectionCommon<Side> {
     /// [`process_new_packets()`]: ConnectionCommon::process_new_packets
     /// [`reader()`]: ConnectionCommon::reader
     pub fn read_tls(&mut self, rd: &mut dyn io::Read) -> Result<usize, io::Error> {
-        if self.received_plaintext.is_full() {
+        if self.recv.received_plaintext.is_full() {
             return Err(io::Error::other("received plaintext buffer full"));
         }
 
-        if self.has_received_close_notify {
+        if self.recv.has_received_close_notify {
             return Ok(0);
         }
 
@@ -819,7 +826,7 @@ impl<Side: SideData> ConnectionCommon<Side> {
             .deframer_buffer
             .read(rd, self.core.hs_deframer.is_active());
         if let Ok(0) = res {
-            self.has_seen_eof = true;
+            self.recv.has_seen_eof = true;
         }
         res
     }
@@ -832,7 +839,7 @@ impl<Side: SideData> ConnectionCommon<Side> {
     /// After this function returns, the connection buffer may not yet be fully flushed. The
     /// [`CommonState::wants_write`] function can be used to check if the output buffer is empty.
     pub fn write_tls(&mut self, wr: &mut dyn io::Write) -> Result<usize, io::Error> {
-        self.sendable_tls.write_to(wr)
+        self.send.sendable_tls.write_to(wr)
     }
 }
 
@@ -943,7 +950,9 @@ impl<Side: SideData> ConnectionCore<Side> {
             let opt_msg = match res {
                 Ok(opt_msg) => opt_msg,
                 Err(e) => {
-                    self.side.maybe_send_fatal_alert(&e);
+                    self.side
+                        .send
+                        .maybe_send_fatal_alert(&e);
                     if let Error::DecryptError = e {
                         state.handle_decrypt_error();
                     }
@@ -967,19 +976,22 @@ impl<Side: SideData> ConnectionCore<Side> {
             ) {
                 Ok(new) => state = new,
                 Err(e) => {
-                    self.side.maybe_send_fatal_alert(&e);
+                    self.side
+                        .send
+                        .maybe_send_fatal_alert(&e);
                     self.state = Err(e.clone());
                     deframer_buffer.discard(buffer_progress.take_discard());
                     return Err(e);
                 }
             }
 
-            if self.side.may_send_application_data && !sendable_plaintext.is_empty() {
+            if self.side.send.may_send_application_data && !sendable_plaintext.is_empty() {
                 self.side
+                    .send
                     .send_buffered_plaintext(sendable_plaintext);
             }
 
-            if self.side.has_received_close_notify {
+            if self.side.recv.has_received_close_notify {
                 // "Any data received after a closure alert has been received MUST be ignored."
                 // -- <https://datatracker.ietf.org/doc/html/rfc8446#section-6.1>
                 // This is data that has already been accepted in `read_tls`.
@@ -990,6 +1002,7 @@ impl<Side: SideData> ConnectionCore<Side> {
             if let Some(payload) = plaintext.take() {
                 let payload = payload.reborrow(&Delocator::new(buffer));
                 self.side
+                    .recv
                     .received_plaintext
                     .append(payload.into_vec());
             }
@@ -1061,7 +1074,11 @@ impl<Side: SideData> ConnectionCore<Side> {
                     // * The payload size is indicative of a plaintext alert message.
                     ContentType::Alert
                         if version_is_tls13
-                            && !self.side.decrypt_state.has_decrypted()
+                            && !self
+                                .side
+                                .recv
+                                .decrypt_state
+                                .has_decrypted()
                             && message.payload.len() <= 2 =>
                     {
                         true
@@ -1076,6 +1093,7 @@ impl<Side: SideData> ConnectionCore<Side> {
 
                 let message = match self
                     .side
+                    .recv
                     .decrypt_state
                     .decrypt_incoming(message)
                 {
@@ -1154,6 +1172,7 @@ impl<Side: SideData> ConnectionCore<Side> {
             if self.hs_deframer.has_message_ready() {
                 // trial decryption finishes with the first handshake message after it started.
                 self.side
+                    .recv
                     .decrypt_state
                     .finish_trial_decryption();
 
@@ -1177,14 +1196,14 @@ impl<Side: SideData> ConnectionCore<Side> {
             return Err(Error::HandshakeNotComplete);
         }
 
-        if !common.sendable_tls.is_empty() {
+        if !common.send.sendable_tls.is_empty() {
             return Err(ApiMisuse::SecretExtractionWithPendingSendableData.into());
         }
 
         let state = self.state?;
 
-        let read_seq = common.decrypt_state.read_seq();
-        let write_seq = common.encrypt_state.write_seq();
+        let read_seq = common.recv.decrypt_state.read_seq();
+        let write_seq = common.send.encrypt_state.write_seq();
 
         let (secrets, state) = state.into_external_state()?;
         let secrets = ExtractedSecrets {
@@ -1214,7 +1233,12 @@ impl<Side: SideData> ConnectionCore<Side> {
 
     /// Trigger a `refresh_traffic_keys` if required by `CommonState`.
     fn maybe_refresh_traffic_keys(&mut self) {
-        if mem::take(&mut self.side.refresh_traffic_keys_pending) {
+        if mem::take(
+            &mut self
+                .side
+                .send
+                .refresh_traffic_keys_pending,
+        ) {
             let _ = self.refresh_traffic_keys();
         }
     }

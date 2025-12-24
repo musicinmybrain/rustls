@@ -60,14 +60,19 @@ impl<Side: SideData> UnbufferedConnectionCommon<Side> {
                 );
             }
 
-            if let Some(chunk) = self.core.side.sendable_tls.pop() {
+            if let Some(chunk) = self.core.side.send.sendable_tls.pop() {
                 break (
                     buffer.pending_discard(),
                     EncodeTlsData::new(self, chunk).into(),
                 );
             }
 
-            let deframer_output = if self.core.side.has_received_close_notify {
+            let deframer_output = if self
+                .core
+                .side
+                .recv
+                .has_received_close_notify
+            {
                 None
             } else {
                 match self
@@ -77,6 +82,7 @@ impl<Side: SideData> UnbufferedConnectionCommon<Side> {
                     Err(err) => {
                         self.core
                             .side
+                            .send
                             .maybe_send_fatal_alert(&err);
                         buffer.queue_discard(buffer_progress.take_discard());
                         return UnbufferedStatus {
@@ -124,6 +130,7 @@ impl<Side: SideData> UnbufferedConnectionCommon<Side> {
                     Err(e) => {
                         self.core
                             .side
+                            .send
                             .maybe_send_fatal_alert(&e);
                         buffer.queue_discard(buffer_progress.take_discard());
                         self.core.state = Err(e.clone());
@@ -138,14 +145,33 @@ impl<Side: SideData> UnbufferedConnectionCommon<Side> {
                     buffer.pending_discard(),
                     TransmitTlsData { conn: self }.into(),
                 );
-            } else if self.core.side.has_received_close_notify && !self.emitted_peer_closed_state {
+            } else if self
+                .core
+                .side
+                .recv
+                .has_received_close_notify
+                && !self.emitted_peer_closed_state
+            {
                 self.emitted_peer_closed_state = true;
                 break (buffer.pending_discard(), ConnectionState::PeerClosed);
-            } else if self.core.side.has_received_close_notify
-                && self.core.side.has_sent_close_notify
+            } else if self
+                .core
+                .side
+                .recv
+                .has_received_close_notify
+                && self
+                    .core
+                    .side
+                    .send
+                    .has_sent_close_notify
             {
                 break (buffer.pending_discard(), ConnectionState::Closed);
-            } else if self.core.side.may_send_application_data {
+            } else if self
+                .core
+                .side
+                .send
+                .may_send_application_data
+            {
                 break (
                     buffer.pending_discard(),
                     ConnectionState::WriteTraffic(WriteTraffic { conn: self }),
@@ -412,6 +438,7 @@ impl<Side: SideData> WriteTraffic<'_, Side> {
         self.conn
             .core
             .side
+            .send
             .write_plaintext(application_data.into(), outgoing_tls)
     }
 
@@ -423,6 +450,7 @@ impl<Side: SideData> WriteTraffic<'_, Side> {
         self.conn
             .core
             .side
+            .send
             .eager_send_close_notify(outgoing_tls)
     }
 
@@ -500,6 +528,7 @@ impl<Side: SideData> TransmitTlsData<'_, Side> {
             .conn
             .core
             .side
+            .send
             .may_send_application_data
         {
             Some(WriteTraffic { conn: self.conn })

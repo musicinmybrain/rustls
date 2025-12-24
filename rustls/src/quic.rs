@@ -26,7 +26,7 @@ mod connection {
 
     use super::{DirectionalKeys, KeyChange, Version};
     use crate::client::{ClientConfig, ClientConnectionData};
-    use crate::common_state::{CommonState, DEFAULT_BUFFER_LIMIT, Protocol};
+    use crate::common_state::{CommonState, ConnectionOutputs, DEFAULT_BUFFER_LIMIT, Protocol};
     use crate::conn::{ConnectionCore, KeyingMaterialExporter, SideData};
     use crate::crypto::cipher::{EncodedMessage, Payload};
     use crate::enums::{ApplicationProtocol, ContentType, ProtocolVersion};
@@ -91,7 +91,7 @@ mod connection {
     }
 
     impl Deref for Connection {
-        type Target = CommonState;
+        type Target = ConnectionOutputs;
 
         fn deref(&self) -> &Self::Target {
             match self {
