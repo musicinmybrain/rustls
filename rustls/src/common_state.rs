@@ -51,8 +51,10 @@ pub(crate) fn process_main_protocol<Data: SideData>(
 
     let mut cx = Context {
         data,
-        plaintext_locator,
-        received_plaintext,
+        app_data_output: &mut AppDataOutput {
+            plaintext_locator,
+            received_plaintext,
+        },
     };
 
     state.handle(
@@ -935,6 +937,19 @@ pub(crate) trait State<Side: SideData>: Send + Sync {
 
 pub(crate) struct Context<'a, Data: SideData> {
     pub(crate) data: &'a mut Data,
+    pub(crate) app_data_output: &'a mut dyn Output,
+}
+
+impl<Data: SideData> Output for Context<'_, Data> {
+    fn emit(&mut self, ev: Event<'_>) {
+        match ev {
+            Event::ApplicationData(_) => self.app_data_output.emit(ev),
+            _ => self.data.emit(ev),
+        }
+    }
+}
+
+pub(crate) struct AppDataOutput<'a> {
     /// Store a [`Locator`] initialized from the current receive buffer
     ///
     /// Allows received plaintext data to be unborrowed and stored in
@@ -949,22 +964,19 @@ pub(crate) struct Context<'a, Data: SideData> {
     pub(crate) received_plaintext: &'a mut Option<UnborrowedPayload>,
 }
 
-impl<Data: SideData> Output for Context<'_, Data> {
+impl Output for AppDataOutput<'_> {
     fn emit(&mut self, ev: Event<'_>) {
-        match ev {
-            Event::ApplicationData(payload) => {
-                // Receive plaintext data [`Payload<'_>`].
-                //
-                // Since [`Context`] does not hold a lifetime to the receive buffer the
-                // passed [`Payload`] will have it's lifetime erased by storing an index
-                // into the receive buffer as an [`UnborrowedPayload`]. This enables the
-                // data to be later reborrowed after it has been decrypted in-place.
-                let previous = self
-                    .received_plaintext
-                    .replace(UnborrowedPayload::unborrow(self.plaintext_locator, payload));
-                debug_assert!(previous.is_none(), "overwrote plaintext data");
-            }
-            _ => self.data.emit(ev),
+        if let Event::ApplicationData(payload) = ev {
+            // Receive plaintext data [`Payload<'_>`].
+            //
+            // Since [`Context`] does not hold a lifetime to the receive buffer the
+            // passed [`Payload`] will have it's lifetime erased by storing an index
+            // into the receive buffer as an [`UnborrowedPayload`]. This enables the
+            // data to be later reborrowed after it has been decrypted in-place.
+            let previous = self
+                .received_plaintext
+                .replace(UnborrowedPayload::unborrow(self.plaintext_locator, payload));
+            debug_assert!(previous.is_none(), "overwrote plaintext data");
         }
     }
 }
@@ -988,6 +1000,13 @@ impl Input<'_> {
 /// The route for handshake state machine to surface determinations about the connection.
 pub(crate) trait Output {
     fn emit(&mut self, ev: Event<'_>);
+}
+
+/// An `Output` that throws everything away.
+pub(crate) struct NullOutput;
+
+impl Output for NullOutput {
+    fn emit(&mut self, _ev: Event<'_>) {}
 }
 
 /// The set of events output by the low-level handshake state machine.

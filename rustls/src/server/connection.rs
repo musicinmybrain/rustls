@@ -34,7 +34,7 @@ use crate::log::trace;
 use crate::msgs::ServerExtensionsInput;
 #[cfg(feature = "std")]
 use crate::msgs::{
-    ClientHelloPayload, HandshakePayload, Locator, Message, MessagePayload, ServerNamePayload,
+    ClientHelloPayload, HandshakePayload, Message, MessagePayload, ServerNamePayload,
 };
 use crate::suites::ExtractedSecrets;
 use crate::sync::Arc;
@@ -534,7 +534,7 @@ impl Accepted {
         mut self,
         config: Arc<ServerConfig>,
     ) -> Result<ServerConnection, (Error, AcceptedAlert)> {
-        use crate::common_state::Context;
+        use crate::common_state::{Context, NullOutput};
 
         if let Err(err) = self
             .connection
@@ -559,8 +559,7 @@ impl Accepted {
         let mut cx = Context {
             data: &mut self.connection.core.side,
             // `ExpectClientHello::with_input` won't read borrowed plaintext
-            plaintext_locator: &Locator::new(&[]),
-            received_plaintext: &mut None,
+            app_data_output: &mut NullOutput,
         };
 
         let input = ClientHelloInput {
@@ -574,7 +573,6 @@ impl Accepted {
             Ok(new) => new,
             Err(err) => return Err(AcceptedAlert::from_error(err, self.connection.core.side)),
         };
-        debug_assert!(cx.received_plaintext.is_none(), "read plaintext");
 
         self.connection.replace_state(new);
         Ok(ServerConnection {
