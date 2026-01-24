@@ -534,7 +534,7 @@ impl Accepted {
         mut self,
         config: Arc<ServerConfig>,
     ) -> Result<ServerConnection, (Error, AcceptedAlert)> {
-        use crate::common_state::{Context, NullOutput};
+        use crate::common_state::{CaptureAppData, NullOutput};
 
         if let Err(err) = self
             .connection
@@ -556,8 +556,8 @@ impl Accepted {
                 return Err(AcceptedAlert::from_error(err, self.connection.core.side));
             }
         };
-        let mut cx = Context {
-            data: &mut self.connection.core.side,
+        let mut cx = CaptureAppData {
+            output: &mut self.connection.core.side,
             // `ExpectClientHello::with_input` won't read borrowed plaintext
             app_data_output: &mut NullOutput,
         };

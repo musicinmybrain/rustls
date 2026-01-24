@@ -10,7 +10,7 @@ use kernel::KernelConnection;
 #[cfg(feature = "std")]
 use crate::common_state::Input;
 use crate::common_state::{
-    CommonState, Context, DEFAULT_BUFFER_LIMIT, IoState, NullOutput, Output, State,
+    CaptureAppData, CommonState, DEFAULT_BUFFER_LIMIT, IoState, NullOutput, Output, State,
     process_main_protocol,
 };
 use crate::crypto::cipher::{Decrypted, EncodedMessage};
@@ -1246,8 +1246,8 @@ impl<Side: SideData> ConnectionCore<Side> {
 
     fn refresh_traffic_keys(&mut self) -> Result<(), Error> {
         match &mut self.state {
-            Ok(st) => st.send_key_update_request(&mut Context {
-                data: &mut self.side,
+            Ok(st) => st.send_key_update_request(&mut CaptureAppData {
+                output: &mut self.side,
                 app_data_output: &mut NullOutput,
             }),
             Err(e) => Err(e.clone()),

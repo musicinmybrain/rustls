@@ -49,8 +49,8 @@ pub(crate) fn process_main_protocol<Data: SideData>(
         return Ok(state);
     }
 
-    let mut cx = Context {
-        data,
+    let mut cx = CaptureAppData {
+        output: data,
         app_data_output: &mut AppDataOutput {
             plaintext_locator,
             received_plaintext,
@@ -935,16 +935,16 @@ pub(crate) trait State<Side: SideData>: Send + Sync {
     }
 }
 
-pub(crate) struct Context<'a, Data: SideData> {
-    pub(crate) data: &'a mut Data,
+pub(crate) struct CaptureAppData<'a> {
     pub(crate) app_data_output: &'a mut dyn Output,
+    pub(crate) output: &'a mut dyn Output,
 }
 
-impl<Data: SideData> Output for Context<'_, Data> {
+impl Output for CaptureAppData<'_> {
     fn emit(&mut self, ev: Event<'_>) {
         match ev {
             Event::ApplicationData(_) => self.app_data_output.emit(ev),
-            _ => self.data.emit(ev),
+            _ => self.output.emit(ev),
         }
     }
 }
