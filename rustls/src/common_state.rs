@@ -935,9 +935,9 @@ pub(crate) trait State<Side: SideData>: Send + Sync {
     }
 }
 
-pub(crate) struct CaptureAppData<'a> {
-    pub(crate) app_data_output: &'a mut dyn Output,
-    pub(crate) output: &'a mut dyn Output,
+struct CaptureAppData<'a> {
+    app_data_output: &'a mut dyn Output,
+    output: &'a mut dyn Output,
 }
 
 impl Output for CaptureAppData<'_> {
@@ -949,19 +949,19 @@ impl Output for CaptureAppData<'_> {
     }
 }
 
-pub(crate) struct AppDataOutput<'a> {
+struct AppDataOutput<'a> {
     /// Store a [`Locator`] initialized from the current receive buffer
     ///
     /// Allows received plaintext data to be unborrowed and stored in
     /// `received_plaintext` for in-place decryption.
-    pub(crate) plaintext_locator: &'a Locator,
+    plaintext_locator: &'a Locator,
     /// Unborrowed received plaintext data
     ///
     /// Set if plaintext data was received.
     ///
     /// Plaintext data may be reborrowed using a [`Delocator`] which was
     /// initialized from the same slice as `plaintext_locator`.
-    pub(crate) received_plaintext: &'a mut Option<UnborrowedPayload>,
+    received_plaintext: &'a mut Option<UnborrowedPayload>,
 }
 
 impl Output for AppDataOutput<'_> {
