@@ -534,8 +534,6 @@ impl Accepted {
         mut self,
         config: Arc<ServerConfig>,
     ) -> Result<ServerConnection, (Error, AcceptedAlert)> {
-        use crate::common_state::{CaptureAppData, NullOutput};
-
         if let Err(err) = self
             .connection
             .core
@@ -556,11 +554,6 @@ impl Accepted {
                 return Err(AcceptedAlert::from_error(err, self.connection.core.side));
             }
         };
-        let mut cx = CaptureAppData {
-            output: &mut self.connection.core.side,
-            // `ExpectClientHello::with_input` won't read borrowed plaintext
-            app_data_output: &mut NullOutput,
-        };
 
         let input = ClientHelloInput {
             message: &self.input.message,
@@ -569,7 +562,7 @@ impl Accepted {
             proof,
         };
 
-        let new = match state.with_input(input, &mut cx) {
+        let new = match state.with_input(input, &mut self.connection.core.side) {
             Ok(new) => new,
             Err(err) => return Err(AcceptedAlert::from_error(err, self.connection.core.side)),
         };

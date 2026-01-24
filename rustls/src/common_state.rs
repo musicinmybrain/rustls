@@ -1002,13 +1002,6 @@ pub(crate) trait Output {
     fn emit(&mut self, ev: Event<'_>);
 }
 
-/// An `Output` that throws everything away.
-pub(crate) struct NullOutput;
-
-impl Output for NullOutput {
-    fn emit(&mut self, _ev: Event<'_>) {}
-}
-
 /// The set of events output by the low-level handshake state machine.
 pub(crate) enum Event<'a> {
     ApplicationData(Payload<'a>),

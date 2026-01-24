@@ -7,9 +7,7 @@ use pki_types::ServerName;
 use super::config::ClientConfig;
 use super::hs::ClientHelloInput;
 use crate::client::EchStatus;
-use crate::common_state::{
-    CaptureAppData, CommonState, EarlyDataEvent, Event, NullOutput, Output, Protocol, Side,
-};
+use crate::common_state::{CommonState, EarlyDataEvent, Event, Output, Protocol, Side};
 use crate::conn::{ConnectionCore, UnbufferedConnectionCommon};
 #[cfg(doc)]
 use crate::crypto;
@@ -281,14 +279,8 @@ impl ConnectionCore<ClientConnectionData> {
         common_state.fips = config.fips();
         let mut data = ClientConnectionData::new(common_state);
 
-        let mut cx = CaptureAppData {
-            output: &mut data,
-            // `start_handshake` won't read plaintext
-            app_data_output: &mut NullOutput,
-        };
-
-        let input = ClientHelloInput::new(name, &extra_exts, proto, &mut cx, config)?;
-        let state = input.start_handshake(extra_exts, &mut cx)?;
+        let input = ClientHelloInput::new(name, &extra_exts, proto, &mut data, config)?;
+        let state = input.start_handshake(extra_exts, &mut data)?;
 
         Ok(Self::new(state, data))
     }
